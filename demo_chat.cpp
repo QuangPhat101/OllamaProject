@@ -1,91 +1,95 @@
 #include <iostream>
 #include <string>
-#include <vector>
-#include <map>
+#include <curl/curl.h>
 
-// Giả lập câu trả lời của AI
-std::map<std::string, std::string> simulatorResponses = {
-    {"con trỏ", "Con trỏ là biến lưu địa chỉ ô nhớ. Ví dụ:\nint x = 10;\nint* ptr = &x;\ncout << *ptr; // In ra 10"},
-    {"class", "Class là bản thiết kế để tạo object. Ví dụ:\nclass Car {\nprivate:\n    int speed;\npublic:\n    void drive() { ... }\n};"},
-    {"vector", "Vector là mảng động trong C++. Ví dụ:\nvector<int> nums = {1, 2, 3};\nnums.push_back(4);"},
-    {"hello", "Xin chào! Tôi là chatbot hỗ trợ học lập trình. Bạn có thể hỏi về C++, thuật toán, OOP..."},
-    {"default", "Xin lỗi, tôi chưa có thông tin về câu hỏi này. Hãy thử hỏi về: con trỏ, class, vector"}
-};
-
-// Hàm giả lập AI
-std::string simulatorAI(const std::string& question) {
-    // Tìm keyword trong câu hỏi
-    for (const auto& pair : simulatorResponses) {
-        if (question.find(pair.first) != std::string::npos) {
-            return pair.second;
-        }
-    }
-    return simulatorResponses["default"];
+size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+    ((std::string*)userp)->append((char*)contents, size * nmemb);
+    return size * nmemb;
 }
 
 int main() {
-    std::cout << "╔════════════════════════════════════════════════════════════════════╗\n";
-    std::cout << "║   DEMO LOCAL CHATBOT                                               ║\n";
-    std::cout << "║   Gõ 'exit' để thoát, 'help' để xem gợi ý các câu lệnh được hỗ trợ ║\n";
-    std::cout << "╚════════════════════════════════════════════════════════════════════╝\n\n";
+    std::cout << "=== TEST KẾT NỐI OLLAMA SERVER ===\n\n";
     
-    std::vector<std::pair<std::string, std::string>> history; // Lưu lịch sử
-    std::string input;
+    // URL
+    const std::string API_URL = "https://dionna-squarelike-centrically.ngrok-free.dev/api/chat";
     
-    while (true) {
-        std::cout << "👤 Bạn: ";
-        std::getline(std::cin, input);
-        
-        // Xử lý lệnh
-        if (input == "exit") {
-            std::cout << "👋 Tạm biệt!\n";
-            break;
-        }
-        
-        if (input == "help") {
-            std::cout << "💡 Bạn có thể hỏi về:\n";
-            std::cout << "   - Con trỏ trong C++\n";
-            std::cout << "   - Class và Object\n";
-            std::cout << "   - Vector trong C++\n";
-            std::cout << "   - Hoặc gõ 'history' để xem lịch sử\n\n";
-            continue;
-        }
-        
-        if (input == "history") {
-            std::cout << "📜 Lịch sử hội thoại:\n";
-            for (const auto& msg : history) {
-                std::cout << "  👤: " << msg.first << "\n";
-                std::cout << "  🤖: " << msg.second << "\n\n";
-            }
-            continue;
-        }
-        
-        if (input == "clear") {
-            history.clear();
-            std::cout << "✅ Đã xóa lịch sử\n\n";
-            continue;
-        }
-        
-        if (input.empty()) continue;
-        
-        // Giả lập "đang suy nghĩ..."
-        std::cout << "🤖 AI: ";
-        std::cout.flush();
-        
-        // Lấy câu trả lời giả lập
-        std::string answer = simulatorAI(input);
-        
-        // Giả lập streaming (in từng chữ)
-        for (char c : answer) {
-            std::cout << c << std::flush;
-            // Bỏ comment dòng dưới để thấy hiệu ứng streaming rõ hơn
-            // std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        }
-        std::cout << "\n\n";
-        
-        // Lưu vào lịch sử
-        history.push_back({input, answer});
+    std::cout << " Đang kết nối tới: " << API_URL << "\n";
+    std::cout << " Vui lòng đợi...\n\n";
+    
+    // Khởi tạo CURL
+    curl_global_init(CURL_GLOBAL_ALL);
+    CURL* curl = curl_easy_init();
+    
+    if (!curl) {
+        std::cerr << " Lỗi: Không thể khởi tạo CURL\n";
+        return 1;
     }
     
-    return 0;
+    // Tạo payload JSON đơn giản
+    std::string payload = R"({
+        "model": "gpt-oss:20b",
+        "messages": [
+            {"role": "user", "content": "Hello"}
+        ],
+        "stream": false
+    })";
+    
+    std::string response;
+    
+    // Setup CURL
+    struct curl_slist* headers = NULL;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    
+    curl_easy_setopt(curl, CURLOPT_URL, API_URL.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 60L);
+    
+    // Thực hiện request
+    CURLcode res = curl_easy_perform(curl);
+    
+    // Kiểm tra kết quả
+    if (res != CURLE_OK) {
+        std::cerr << " LỖI KẾT NỐI: " << curl_easy_strerror(res) << "\n\n";
+        
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        curl_global_cleanup();
+        return 1;
+    }
+    
+    // Lấy HTTP status code
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    
+    std::cout << "📊 HTTP Status Code: " << http_code << "\n\n";
+    
+    if (http_code == 200) {
+        std::cout << " KẾT NỐI THÀNH CÔNG!\n\n";
+        std::cout << " Response từ server:\n";
+        std::cout << "─────────────────────────────────────\n";
+        std::cout << response.substr(0, 500); 
+        if (response.length() > 500) {
+            std::cout << "...\n";
+        } else {
+            std::cout << "\n";
+        }
+        std::cout << "─────────────────────────────────────\n\n";
+        std::cout << " Server hoạt động tốt! Có thể chạy chatbot.\n";
+    } else {
+        std::cout << "  KẾT NỐI KHÔNG THÀNH CÔNG\n\n";
+    
+    }
+    
+    // Cleanup
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    curl_global_cleanup();
+    
+    std::cout << "\n=== KẾT THÚC TEST ===\n";
+    
+    return (http_code == 200) ? 0 : 1;
 }
